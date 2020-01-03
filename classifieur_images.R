@@ -21,11 +21,11 @@ read.images <- function(path = "./") {
   return(res)
 }
 
-car <- read.images("~/Desktop/GI04/SY19/tp10/data/images_train/car/")
+car <- read.images("./data/images_train/car/")
 View(car)
-cat <- read.images("~/Desktop/GI04/SY19/tp10/data/images_train/cat/")
+cat <- read.images("./data/images_train/cat/")
 View(cat)
-flower <- read.images("~/Desktop/GI04/SY19/tp10/data/images_train/flower/")
+flower <- read.images("./data/images_train/flower/")
 View(flower)
 
 # data splitting
