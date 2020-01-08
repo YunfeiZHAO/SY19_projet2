@@ -1,17 +1,23 @@
 library(rpart)
-
+library(pROC)
+getwd()
+setwd("/Users/yunfei/Desktop/GI04/SY19/tp10/SY19_projet2/")
 
 # read data
 astronomy <- read.csv("./data/astronomy_train.csv",sep=",",header=TRUE)
 head(astronomy)
 
 # data splitting
-class <- astronomy$class
-astronomy <- subset(astronomy, select = -c(class))
-View(astronomy)
-View(class)
+n <- nrow(astronomy)
+ntrain <- 2*n/3
+idx.train = sample(n, ntrain)
+ntrain <- length(idx.train)
+ntest <- n - ntrain
+
 # data cleaning
 ## remove variable with constant value
+class <- astronomy$class
+astronomy <- subset(astronomy, select = -c(class))
 s<-apply(astronomy, 2, sd)
 ii<-which(s>0)
 iix <- which(s<=0)
@@ -19,29 +25,22 @@ astronomy<-astronomy[, ii]
 astronomy<-cbind(astronomy, class)
 View(astronomy)
 
-### data normalisation
-astronomy<-scale(astronomy)
-pca<-prcomp(astronomy)
-lambda<-pca$sdev^2
-pairs(pca$x[,1:5], col=y, pch=as.numeric(y))
-
-plot(cumsum(lambda)/sum(lambda), xlab="q")
-
-q<-100
-X2<-scale(pca$x[,1:q])
-
-
+########################## Logistic classification #################################
+fit.lr <- glm(class~., data=astronomy, subset=idx.train, family="binomial") 
+summary(fit.lr)
+pred.lr <- predict(fit.lr, newdata=astronomy[-idx.train,], type="response") 
+lr.yhat <- pred.lr > 0.5
+lr.ytest <- astronomy[-idx.train, "class"]
+CM.lr <- table(lr.yhat, lr.ytest)
+ntest <- length(lr.ytest)
+err.lr <- 1 - sum(diag(CM.lr))/ntest
+err.lr
 
 
-# Arbre de décision
+########################## Gaussian mixture model (EM) ###############################
+
+############################ Arbre de décision #######################################
 ## Un arbre
-n <- nrow(astronomy)
-ntrain <- 2*n/3
-
-idx.train = sample(n, ntrain)
-ntrain <- length(idx.train)
-ntest <- n - ntrain
-
 astronomy$class <- as.factor(astronomy$class)
 fit.tree <- rpart(class~., data = astronomy, 
                   subset = idx.train, method = "class",
@@ -82,7 +81,7 @@ library(pROC)
 prob <- predict(pruned_tree, newdata = astronomy[-idx.train,], type = 'prob')
 roc_tree_pruned <- multiclass.roc(prunedTree.ytest, prob)
 
-# Bagging
+######################### Bagging ###########################################
 library(randomForest)
 param <-ncol(astronomy) - 1
 fit.bagged <- randomForest(class~., data=astronomy, subset=idx.train, mtry=param)
@@ -93,7 +92,8 @@ CM.bagged
 err.bagged <- 1-mean(bagged.yhat == bagged.ytest)
 err.bagged
 
-# Random forest
+
+############################### Random forest ################################
 fit.rf <- randomForest(class~., data=astronomy, subset=idx.train)
 rf.ytest <- astronomy[-idx.train, "class"]
 rf.yhat <- predict(fit.rf, newdata=astronomy[-idx.train,], type="response") 
@@ -101,20 +101,57 @@ CM.rf <- table(rf.ytest, rf.yhat)
 err.rf <- 1-mean(rf.ytest== rf.yhat)
 err.rf
 
-# Logistic regression
-fit.lr <- glm(class~., data=astronomy, subset=idx.train, family="binomial") 
-summary(fit.lr)
-pred.lr <- predict(fit.lr, newdata=astronomy[-idx.train,], type="response") 
-lr.yhat <- pred.lr > 0.5
-lr.ytest <- astronomy[-idx.train, "class"]
-CM.lr <- table(lr.yhat, lr.ytest)
-ntest <- length(lr.ytest)
-err.lr <- 1 - sum(diag(CM.lr))/ntest
-err.lr
-# Gaussian mixture model (EM)
 
-# SVM
 
+
+################################# SVM #################################
+
+## data normalisation
+class <- astronomy$class
+SVM.X <- subset(astronomy, select = -c(class))
+SVM.X <- scale(SVM.X)
+
+## PCA(vue que on a pas beacoup de varible on va voir si qu'on veut diminuer la dimension)
+pca<-prcomp(SVM.X)
+lambda<-pca$sdev^2
+pairs(pca$x, col=y, pch=as.numeric(y))
+plot(cumsum(lambda)/sum(lambda), xlab="q")
+
+
+SVM.X.train <- SVM.X[idx.train,]
+SVM.X.test <- SVM.X[-idx.train,]
+
+SVM.Y.train <- class[idx.train]
+SVM.Y.test <- class[-idx.train]
+
+## SVM linéaire
+library("kernlab")
+
+### SVM avec noyau linéaire
+# Réglage de C par validation croisée
+CC<-c(0.001,0.01,0.1,1,10,100,1000,10e4)
+N<-length(CC)
+M<-10 # nombre de répétitions de la validation croisée
+err<-matrix(0,N,M)
+for(k in 1:M){
+  for(i in 1:N){
+    err[i,k]<-cross(ksvm(x=SVM.X.train,y=SVM.Y.train,type="C-svc",kernel="vanilladot",C=CC[i],cross=5))
+  }
+}
+Err<-rowMeans(err)
+plot(CC,Err,type="b",log="x",xlab="C",ylab="CV error")
+
+# Calcul de l'erreur de test avec la meilleure valeur de C
+minCC <- CC[which.min(Err)]
+svmfit<-ksvm(x=SVM.X.train,y=SVM.Y.train,type="C-svc",kernel="vanilladot",C=minCC)
+SVM.pred<-predict(svmfit,newdata=SVM.X.test)
+table(SVM.Y.test,SVM.pred)
+err<-mean(SVM.Y.test != SVM.pred)
+print(err)
+
+# Courbe COR
+roc.svm<-roc(SVM.pred, SVM.Y.test)
+plot(roc.svm)
 
 
 
