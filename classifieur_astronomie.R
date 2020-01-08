@@ -1,17 +1,22 @@
 library(rpart)
-
+getwd()
+setwd("/Users/yunfei/Desktop/GI04/SY19/tp10/SY19_projet2/")
 
 # read data
 astronomy <- read.csv("./data/astronomy_train.csv",sep=",",header=TRUE)
 head(astronomy)
 
 # data splitting
-class <- astronomy$class
-astronomy <- subset(astronomy, select = -c(class))
-View(astronomy)
-View(class)
+n <- nrow(astronomy)
+ntrain <- 2*n/3
+idx.train = sample(n, ntrain)
+ntrain <- length(idx.train)
+ntest <- n - ntrain
+
 # data cleaning
 ## remove variable with constant value
+class <- astronomy$class
+astronomy <- subset(astronomy, select = -c(class))
 s<-apply(astronomy, 2, sd)
 ii<-which(s>0)
 iix <- which(s<=0)
@@ -19,29 +24,9 @@ astronomy<-astronomy[, ii]
 astronomy<-cbind(astronomy, class)
 View(astronomy)
 
-### data normalisation
-astronomy<-scale(astronomy)
-pca<-prcomp(astronomy)
-lambda<-pca$sdev^2
-pairs(pca$x[,1:5], col=y, pch=as.numeric(y))
-
-plot(cumsum(lambda)/sum(lambda), xlab="q")
-
-q<-100
-X2<-scale(pca$x[,1:q])
-
-
-
 
 # Arbre de décision
 ## Un arbre
-n <- nrow(astronomy)
-ntrain <- 2*n/3
-
-idx.train = sample(n, ntrain)
-ntrain <- length(idx.train)
-ntest <- n - ntrain
-
 astronomy$class <- as.factor(astronomy$class)
 fit.tree <- rpart(class~., data = astronomy, 
                   subset = idx.train, method = "class",
@@ -111,9 +96,33 @@ CM.lr <- table(lr.yhat, lr.ytest)
 ntest <- length(lr.ytest)
 err.lr <- 1 - sum(diag(CM.lr))/ntest
 err.lr
+
+
 # Gaussian mixture model (EM)
 
+
 # SVM
+
+## data normalisation
+class <- astronomy$class
+SVM.X <- subset(astronomy, select = -c(class))
+SVM.X <- scale(SVM.X)
+
+## PCA(vue que on a pas beacoup de varible on va voir si qu'on veut diminuer la dimension)
+pca<-prcomp(SVM.X)
+lambda<-pca$sdev^2
+pairs(pca$x, col=y, pch=as.numeric(y))
+plot(cumsum(lambda)/sum(lambda), xlab="q")
+
+
+SVM.X.train <- SVM.X[idx.train,]
+SVM.X.test <- SVM.X[-idx.train,]
+
+SVM.Y.train <- class[idx.train]
+SVM.Y.test <- class[-idx.train]
+
+## SVM linéaire
+
 
 
 
