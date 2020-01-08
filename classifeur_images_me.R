@@ -1,11 +1,13 @@
-library(keras)
 install_keras()
+
+library(keras)
 library(formattable)
 library(tidyverse)
 
 getwd()
 setwd("/Users/yunfei/Desktop/GI04/SY19/tp10/SY19_projet2/")
 
+############################# 1, data loading ###############################
 # list of objects to modle
 object_list <- c("car", "cat", "flower")
 
@@ -28,43 +30,44 @@ channels <- 3
 # path to image folders
 image_files_path <- "./data/images_train/"
 
+
 data_gen = image_data_generator(
-  rescale = 1/255 #,
+  rescale = 1/255, #,
   #rotation_range = 40,
   #width_shift_range = 0.2,
   #height_shift_range = 0.2,
   #shear_range = 0.2,
   #zoom_range = 0.2,
   #horizontal_flip = TRUE,
-  #fill_mode = "nearest"
+  #fimaill_mode = "nearest"
+  validation_split = 0.3
 )
 
 # training images
-image_array_gen <- flow_images_from_directory(train_image_files_path, 
+train_image_array_gen <- flow_images_from_directory(image_files_path, 
                                                     data_gen,
                                                     target_size = target_size,
                                                     class_mode = "categorical",
                                                     classes = object_list,
-                                                    seed = 42)
+                                                    seed = 42,
+                                                    subset = "training")
 
-
-table(factor(image_array_gen$classes))
-
-
+# validation images
+validation_image_array_gen <- flow_images_from_directory(image_files_path, 
+                                                    data_gen,
+                                                    target_size = target_size,
+                                                    class_mode = "categorical",
+                                                    classes = object_list,
+                                                    seed = 42,
+                                                    subset = "validation")
+table(factor(train_image_array_gen$classes))
+table(factor(validation_image_array_gen$classes))
 # number of training samples
-train_samples <- train_image_array_gen$n
-
-# number of validation samples
-valid_samples <- valid_image_array_gen$n
+ntrain <- train_image_array_gen$n
+nvalidation <- validation_image_array_gen$n
 
 
-test_samples <- test_image_array_gen$n
-
-
-
-
-
-#Defining the Model
+#############################2,Defining the CNN Model###############################
 
 model<-keras_model_sequential()
 
@@ -122,33 +125,33 @@ hist <- model %>% fit_generator(
   train_image_array_gen,
   
   # epochs
-  steps_per_epoch = as.integer(train_samples / train_image_array_gen$batch_size), 
+  steps_per_epoch = as.integer(ntrain / train_image_array_gen$batch_size), 
   epochs = epochs, 
   
   # validation data
-  validation_data = valid_image_array_gen,
-  validation_steps = as.integer(valid_samples / valid_image_array_gen$batch_size),
+  #validation_data = valid_image_array_gen,
+  #validation_steps = as.integer(nvalidation / valid_image_array_gen$batch_size),
   
   # print progress
   verbose = 2,
   callbacks = list(
     # save best model after every epoch
-    callback_model_checkpoint("C:/Users/xingjian/Desktop/sy19_projet/fruits_checkpoints.h5", save_best_only = TRUE),
+    callback_model_checkpoint("./checkpoints/cnn_checkpoints.h5", save_best_only = TRUE),
     # only needed for visualising with TensorBoard
-    callback_tensorboard(log_dir = "C:/Users/xingjian/Desktop/sy19_projet/logs")
+    callback_tensorboard(log_dir = "./checkpoints/logs")
   )
 )
 
 
 #------------------predictions---------------------------
 
-predictions1 <- model %>% predict_generator(test_image_array_gen, steps=test_image_array_gen$n/batch_size+1, verbose=1)
+predictions1 <- model %>% predict_generator(validation_image_array_gen, steps=validation_image_array_gen$n/batch_size+1, verbose=1)
 
 colnames(predictions1) <- c("car","cat","flower")
 
 pred_labels<-colnames(predictions1)[apply(predictions1,1,which.max)]
 proba<-apply(predictions1, 1, max)
-stat_df <- as.data.frame(cbind(test_image_array_gen$filenames, round(proba*100,2), pred_labels))
+stat_df <- as.data.frame(cbind(validation_image_array_gen$filenames, round(proba*100,2), pred_labels))
 colnames(stat_df) <- c("filename","proba","class")
 stat_df
 
