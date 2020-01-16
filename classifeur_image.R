@@ -97,7 +97,7 @@ reverse <- function(M){
 }
 
 
-####################################1 CNN ####################################
+#################################### Neural network ####################################
 ############################# 1, data loading ###############################
 # list of objects to modle
 object_list <- c("car", "cat", "flower")
@@ -106,12 +106,6 @@ object_list <- c("car", "cat", "flower")
 img_width <- 100
 img_height <- 100
 target_size <- c(img_width, img_height)
-
-
-
-# define batch size and number of epochs
-batch_size <- 32
-epochs <- 100
 
 
 # RGB = 3 channels
@@ -157,14 +151,81 @@ ntrain <- train_image_array_gen$n
 nvalidation <- validation_image_array_gen$n
 
 
-#############################2,Defining the CNN Model###############################
+#----------------------------
+# NN Model
+#----------------------------
+model2 <- keras_model_sequential() 
+model2 %>% 
+  layer_dense(units = 50, activation = 'relu', input_shape = c(100,100,3), kernel_regularizer = regularizer_l2(l=0.1)) %>% 
+  layer_dropout(rate = 0.4)%>%
+  layer_dense(units = 30, activation = 'relu', kernel_regularizer = regularizer_l2(l=0.1)) %>% 
+  layer_dropout(rate = 0.4)%>%
+  layer_dense(units = 20, activation = 'relu', kernel_regularizer = regularizer_l2(l=0.1)) %>% 
+  layer_dropout(rate = 0.4)%>%
+  layer_dense(units = 3, activation = 'softmax')
+#Compiling the Model
+model2 %>% compile(
+  loss = "sparse_categorical_crossentropy",
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+#Summary of the Model and its Architecture
+summary(model2)
 
-model<-keras_model_sequential()
+#----------------------------
+# Fitting
+#----------------------------
 
+hist2 <- model2 %>% fit_generator(
+  # training data
+  train_image_array_gen,
+  
+  # epochs
+  epochs = 50, 
+  steps_per_epoch = as.integer(ntrain / train_image_array_gen$batch_size), 
+  
+  
+  # validation data
+  validation_data = validation_image_array_gen,
+  validation_steps = as.integer(nvalidation / validation_image_array_gen$batch_size),
+  
+  # print progress
+  verbose = 2,
+  callbacks = list(
+    # save best model after every epoch
+    callback_model_checkpoint("./checkpoints/cnn_checkpoints.h5", save_best_only = TRUE),
+    # only needed for visualising with TensorBoard
+    callback_tensorboard(log_dir = "./checkpoints/logs")
+  )
+)
 
+plot(hist)
+#------------------predictions---------------------------
+predictions1 <- hist$model %>% predict_generator(validation_image_array_gen, steps=validation_image_array_gen$n/batch_size+1, verbose=1)
 
+colnames(predictions1) <- c("car","cat","flower")
+
+pred_labels<-colnames(predictions1)[apply(predictions1,1,which.max)]
+proba<-apply(predictions1, 1, max)
+stat_df <- as.data.frame(cbind(validation_image_array_gen$filenames, round(proba*100,2), pred_labels))
+colnames(stat_df) <- c("filename","proba","class")
+stat_df
+
+validation_labels <- c("car","cat","flower")[validation_image_array_gen$classes + 1]
+pred_labels
+
+matrix.conf.CNN <- table(pred_labels, validation_labels)
+matrix.conf.CNN
+
+ntest <- length(pred_labels)
+err.CNN <- 1 - sum(diag(matrix.conf.CNN))/ntest
+err.CNN
+#----------------------------
+# CNN Model
+#----------------------------
+model1<-keras_model_sequential()
 #Configuring the Model
-model %>%
+model1 %>%
   layer_conv_2d(filter=48,kernel_size=c(3,3),padding="same",
                 input_shape=c(100,100,3)) %>%
   layer_activation("relu") %>%
@@ -199,24 +260,26 @@ opt <- optimizer_rmsprop(lr = 0.0001, decay = 1e-6)
 
 
 #Compiling the Model
-model %>% compile(
+model1 %>% compile(
   loss = "categorical_crossentropy",
   optimizer = opt,
   metrics = "accuracy"
 )
 
 #Summary of the Model and its Architecture
-summary(model)
+summary(model1)
 
-
-#-----------------fit the model-------------------------------
-hist <- model %>% fit_generator(
+#----------------------------
+# Fitting
+#----------------------------
+hist1 <- model1 %>% fit_generator(
   # training data
   train_image_array_gen,
   
   # epochs
+  batch_size = 30,
   steps_per_epoch = as.integer(ntrain / train_image_array_gen$batch_size), 
-  epochs = epochs, 
+  epochs = 100, 
   
   # validation data
   validation_data = validation_image_array_gen,
@@ -234,8 +297,7 @@ hist <- model %>% fit_generator(
 
 plot(hist)
 #------------------predictions---------------------------
-
-predictions1 <- model %>% predict_generator(validation_image_array_gen, steps=validation_image_array_gen$n/batch_size+1, verbose=1)
+predictions1 <- hist$model %>% predict_generator(validation_image_array_gen, steps=validation_image_array_gen$n/batch_size+1, verbose=1)
 
 colnames(predictions1) <- c("car","cat","flower")
 
