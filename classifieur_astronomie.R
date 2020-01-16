@@ -36,6 +36,13 @@ astronomy<-cbind(astronomy, class)
 astronomy$class <- as.factor(astronomy$class)
 # visualisation of class
 #View(astronomy)
+objet <- c('STAR', 'GALAXY', 'QSO')
+n1 <- length(which(astronomy$class == 'STAR'))
+n2 <- length(which(astronomy$class == 'GALAXY'))
+n3 <- length(which(astronomy$class =='QSO'))
+n <- c(n1,n2, n3)
+data<-cbind(STAR = n1, GALAXY = n2, QSO = n3)
+barplot(data)
 hist(as.numeric(astronomy$class)) 
 
 #Correlation check
@@ -67,7 +74,7 @@ err.KNN
 #----------------------------
 # LDA
 #----------------------------
-##Model building##
+##lda+pca##
 fit.LDA<- lda(class~.,data=astronomy.normalised[idx.train,])
 pred.LDA<-predict(fit.LDA, newdata=astronomy.normalised[-idx.train,])
 matrix.conf.LDA<-table(pred.LDA$class, astronomy[-idx.train, "class"])
@@ -76,8 +83,14 @@ err.LDA <- 1 - sum(diag(matrix.conf.LDA))/ntest
 err.LDA
 #0.1313737
 
-roc_LDA <- multiclass.roc(astronomy.normalised[-idx.train,]$class, pred.LDA$posterior, plot=TRUE)
-# 0.975
+##lda+subset##
+fit.LDA.sub<- lda(class~u + r + i + z + run + camcol + specobjid + redshift + plate, data=astronomy[idx.train,])
+pred.LDA.sub<-predict(fit.LDA.sub, newdata=astronomy[-idx.train,])
+matrix.conf.LDA.sub<-table(pred.LDA.sub$class, astronomy[-idx.train, "class"])
+matrix.conf.LDA.sub
+err.LDA.sub <- 1 - sum(diag(matrix.conf.LDA.sub))/ntest
+err.LDA.sub
+#0.07318536
 
 #----------------------------
 # QDA
@@ -86,14 +99,17 @@ fit.QDA<- qda(class~.,data=astronomy.normalised[idx.train,])
 pred.QDA<-predict(fit.QDA, newdata=astronomy.normalised[-idx.train,]) 
 matrix.conf.QDA <-table(pred.QDA$class, astronomy[-idx.train, "class"]) 
 matrix.conf.QDA
-1-sum(diag(matrix.conf.QDA))/ntest
-# 0.02639472
+err.QDA<-1-sum(diag(matrix.conf.QDA))/ntest
+err.QDA
+# 0.01859628
 
 fit.QDA<- qda(class~dec + u + g + run + camcol + field + redshift + fiberid, data=astronomy[idx.train,]) 
 pred.QDA<-predict(fit.QDA, newdata=astronomy[-idx.train,]) 
 matrix.conf.QDA <-table(pred.QDA$class, astronomy[-idx.train, "class"]) 
 matrix.conf.QDA
-1-sum(diag(matrix.conf.QDA))/ntest
+err.QDA.sub<-1-sum(diag(matrix.conf.QDA))/ntest
+err.QDA.sub
+# 0.01139772
 #----------------------------
 # naive Bayes
 #----------------------------
@@ -103,8 +119,8 @@ pred.naive<-predict(fit.naive, newdata=astronomy.normalised[-idx.train,])
 pred.naive <- as.factor(pred.naive)
 matrix.conf.naive<-table(pred.naive, astronomy.normalised[-idx.train, "class"])
 matrix.conf.naive
-1-sum(diag(matrix.conf.naive))/ntest
-# 0.1445711
+err.naivebqyes<-1-sum(diag(matrix.conf.naive))/ntest
+# 0.1169766
 
 
 #----------------------------
@@ -154,7 +170,7 @@ err.MLR
 astronomy$class <- as.factor(astronomy$class)
 fit.tree <- rpart(class~., data = astronomy, 
                   subset = idx.train, method = "class",
-                  control = rpart.control(xval = 10, minbucket = 10, cp = 0.00))
+                  control = rpart.control(xval = 10, minbucket = 5, cp = 0.00))
 plot(fit.tree, margin = 0.0005)
 text(fit.tree, minlength=0.5, cex=0.5, splits=TRUE)
 library(rpart.plot)
@@ -205,7 +221,7 @@ CM.bagged <- table(bagged.yhat, bagged.ytest)
 CM.bagged
 err.bagged <- 1-mean(bagged.yhat == bagged.ytest)
 err.bagged
-# 0.01079784
+# 0.01259748
 #----------------------------
 # Random forest
 #----------------------------
@@ -215,7 +231,7 @@ rf.yhat <- predict(fit.rf, newdata=astronomy[-idx.train,], type="response")
 CM.rf <- table(rf.ytest, rf.yhat)
 err.rf <- 1-mean(rf.ytest== rf.yhat)
 err.rf
-# 0.01079784
+# 0.01139772
 #----------------------------
 # SVM
 #----------------------------
@@ -277,6 +293,14 @@ matrix.conf.svm.polydot<-table(SVM.pred.polydot, SVM.Y.test)
 err.svm.polydot<-1-sum(diag(matrix.conf.svm.polydot))/ntest
 err.svm.polydot
 
+show <- cbind(KNN=err.KNN, 
+              LDA_PCA=err.LDA, LDA_Subset=err.LDA.sub, QDA_PCA=err.QDA, QDA_Subset=err.QDA.sub,
+              MLR_PCA=err.MLR.norm.self, MLR_Subset=err.MLR,
+              Tree=err.tree, PrunedTree=err.prunedTree,
+              Bagging=err.bagged, RandomForest=err.rf,
+              SVM_linear=err.svm, SVM_Gaussian=err.svm.rbfdot, SVM_polynome=err.svm.polydot)
+              
+barplot(show,las=2)
 
 ########################### save Rdata #################################
 save.image("./classifier_astronomie.RData")
