@@ -15,10 +15,9 @@ classifieur_astronomie <- function(dataset) {
   #astronomy<-cbind(astronomy, class)
   View(astronomy)
   #astronomy$class <- as.factor(astronomy$class)
-  predictions<-predict(fit.MLR.norm, newdata=astronomy) 
+  predictions<-predict(fit.MLR.final, newdata=astronomy) 
   return(predictions)
 }
-
 
 '''
 setwd("/Users/yunfei/Desktop/GI04/SY19/tp10/SY19_projet2/")

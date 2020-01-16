@@ -106,9 +106,20 @@ matrix.conf.naive
 1-sum(diag(matrix.conf.naive))/ntest
 # 0.1445711
 
+
 #----------------------------
 # Multinomial Logistic Regression
 #----------------------------
+###############final################
+fit.MLR.final <- multinom(class ~ ., data = astronomy.normalised)
+summary(fit.MLR.final)
+pred.MLR.final <- predict(fit.MLR.final, newdata=astronomy.normalised) 
+matrix.conf.MLR.final <- table(pred.MLR.final, astronomy.normalised[, "class"])
+matrix.conf.MLR.final
+err.MLR.final <- 1 - sum(diag(matrix.conf.MLR.final))/n
+err.MLR.final
+###############final################
+
 fit.MLR.norm <- multinom(class ~ ., data = astronomy.normalised[idx.train,])
 summary(fit.MLR.norm)
 pred.MLR.norm <- predict(fit.MLR.norm, newdata=astronomy.normalised[-idx.train,]) 
@@ -272,6 +283,7 @@ save.image("./classifier_astronomie.RData")
 
 
 load("classifier_astronomie.RData")
+
 pca.rotation <- pca$rotation
-save(fit.MLR.norm, pca.rotation, file = "env.RData")
+save(fit.MLR.final, pca.rotation, file = "env.RData")
 
