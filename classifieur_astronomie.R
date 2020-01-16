@@ -1,5 +1,11 @@
+library(kknn)
 library(rpart)
 library(pROC)
+library(MASS)
+library(corrplot)
+library(nnet)
+
+##CARET choose variable
 getwd()
 setwd("/Users/yunfei/Desktop/GI04/SY19/tp10/SY19_projet2/")
 
@@ -14,6 +20,10 @@ idx.train = sample(n, ntrain)
 ntrain <- length(idx.train)
 ntest <- n - ntrain
 
+# Nested cross validation
+n<-nrow(astronomy)
+n_folds<-12
+
 # data cleaning
 ## remove variable with constant value
 class <- astronomy$class
@@ -23,23 +33,123 @@ ii<-which(s>0)
 iix <- which(s<=0)
 astronomy<-astronomy[, ii]
 astronomy<-cbind(astronomy, class)
-View(astronomy)
+astronomy$class <- as.factor(astronomy$class)
+# visualisation of class
+#View(astronomy)
+hist(as.numeric(astronomy$class)) 
 
-########################## Logistic classification #################################
-fit.lr <- glm(class~., data=astronomy, subset=idx.train, family="binomial") 
-summary(fit.lr)
-pred.lr <- predict(fit.lr, newdata=astronomy[-idx.train,], type="response") 
-lr.yhat <- pred.lr > 0.5
-lr.ytest <- astronomy[-idx.train, "class"]
-CM.lr <- table(lr.yhat, lr.ytest)
-ntest <- length(lr.ytest)
-err.lr <- 1 - sum(diag(CM.lr))/ntest
-err.lr
+#Correlation check
+correlations <- cor(subset(astronomy, select = -c(class)),method="pearson")
+corrplot(correlations, number.cex = .9, method = "circle", type = "full", tl.cex=1,tl.col = "black")
+
+## data normalisation
+scaled.X <- scale(subset(astronomy, select = -c(class)))
+pca<-prcomp(scaled.X)
+#plot(cumsum(lambda)/sum(lambda), xlab="q")
+# take fisrt 10 variable
+pca.X <- data.frame(pca$x[,1:12])
+
+astronomy.normalised<-cbind(pca.X, class)
+astronomy.normalised$class <- as.factor(class)
+correlations.pca <- cor(subset(astronomy.normalised, select = -c(class)),method="pearson")
+corrplot(correlations.pca, number.cex = .9, method = "circle", type = "full", tl.cex=1,tl.col = "black")
+
+#----------------------------
+# KNN
+#----------------------------
+fit.KNN <- kknn(class~., astronomy[idx.train,], astronomy[-idx.train,], distance = 1, kernel = "triangular")
+pred.KNN <- fit.KNN$fitted.values
+matrix.conf.KNN<-table(pred.KNN, astronomy[-idx.train, "class"])
+matrix.conf.KNN
+err.KNN <- 1 - sum(diag(matrix.conf.KNN))/ntest
+err.KNN
+#0.1019796
+#----------------------------
+# LDA
+#----------------------------
+##Model building##
+fit.LDA<- lda(class~.,data=astronomy.normalised[idx.train,])
+pred.LDA<-predict(fit.LDA, newdata=astronomy.normalised[-idx.train,])
+matrix.conf.LDA<-table(pred.LDA$class, astronomy[-idx.train, "class"])
+matrix.conf.LDA
+err.LDA <- 1 - sum(diag(matrix.conf.LDA))/ntest
+err.LDA
+#0.1313737
+
+roc_LDA <- multiclass.roc(astronomy.normalised[-idx.train,]$class, pred.LDA$posterior, plot=TRUE)
+# 0.975
+
+#----------------------------
+# QDA
+#----------------------------
+fit.QDA<- qda(class~.,data=astronomy.normalised[idx.train,]) 
+pred.QDA<-predict(fit.QDA, newdata=astronomy.normalised[-idx.train,]) 
+matrix.conf.QDA <-table(pred.QDA$class, astronomy[-idx.train, "class"]) 
+matrix.conf.QDA
+1-sum(diag(matrix.conf.QDA))/ntest
+# 0.02639472
+
+fit.QDA<- qda(class~dec + u + g + run + camcol + field + redshift + fiberid, data=astronomy[idx.train,]) 
+pred.QDA<-predict(fit.QDA, newdata=astronomy[-idx.train,]) 
+matrix.conf.QDA <-table(pred.QDA$class, astronomy[-idx.train, "class"]) 
+matrix.conf.QDA
+1-sum(diag(matrix.conf.QDA))/ntest
+#----------------------------
+# naive Bayes
+#----------------------------
+library(naivebayes) 
+fit.naive<- naive_bayes(class~.,astronomy.normalised[idx.train,]) 
+pred.naive<-predict(fit.naive, newdata=astronomy.normalised[-idx.train,]) 
+pred.naive <- as.factor(pred.naive)
+matrix.conf.naive<-table(pred.naive, astronomy.normalised[-idx.train, "class"])
+matrix.conf.naive
+1-sum(diag(matrix.conf.naive))/ntest
+# 0.1445711
 
 
-########################## Gaussian mixture model (EM) ###############################
+#----------------------------
+# Multinomial Logistic Regression
+#----------------------------
+###############final################
+fit.MLR.final <- multinom(class ~ ., data = astronomy.normalised)
+summary(fit.MLR.final)
+pred.MLR.final <- predict(fit.MLR.final, newdata=astronomy.normalised) 
+matrix.conf.MLR.final <- table(pred.MLR.final, astronomy.normalised[, "class"])
+matrix.conf.MLR.final
+err.MLR.final <- 1 - sum(diag(matrix.conf.MLR.final))/n
+err.MLR.final
+###############final################
 
-############################ Arbre de décision #######################################
+fit.MLR.norm <- multinom(class ~ ., data = astronomy.normalised[idx.train,])
+summary(fit.MLR.norm)
+pred.MLR.norm <- predict(fit.MLR.norm, newdata=astronomy.normalised[-idx.train,]) 
+matrix.conf.MLR.norm <- table(pred.MLR.norm, astronomy.normalised[-idx.train, "class"])
+matrix.conf.MLR.norm
+err.MLR.norm <- 1 - sum(diag(matrix.conf.MLR.norm))/ntest
+err.MLR.norm
+# 0.00539892
+#0.0119976
+
+# final  value 146.843437 
+# stopped after 100 iterations
+pred.MLR.norm.self <- predict(fit.MLR.norm, newdata=astronomy.normalised[idx.train,]) 
+matrix.conf.MLR.norm.self <- table(pred.MLR.norm.self, astronomy.normalised[idx.train, "class"])
+matrix.conf.MLR.norm.self
+err.MLR.norm.self <- 1 - sum(diag(matrix.conf.MLR.norm.self))/ntrain
+err.MLR.norm.self
+# 0.0060006
+
+fit.MLR <- multinom(class ~ ra + u + r + i + z + run + redshift + mjd, data = astronomy[idx.train,])
+summary(fit.MLR)
+pred.MLR <- predict(fit.MLR, newdata=astronomy[-idx.train,]) 
+matrix.conf.MLR <- table(pred.MLR, astronomy[-idx.train, "class"])
+matrix.conf.MLR
+err.MLR <- 1 - sum(diag(matrix.conf.MLR))/ntest
+err.MLR
+#0.01439712
+#----------------------------
+# Arbre de décision
+#----------------------------
 ## Un arbre
 astronomy$class <- as.factor(astronomy$class)
 fit.tree <- rpart(class~., data = astronomy, 
@@ -57,8 +167,11 @@ matrix.conf.tree
 
 err.tree <- 1 - sum(diag(matrix.conf.tree))/ntest
 err.tree
+# 0.01019796
 
-## Tree pruned
+#----------------------------
+# Tree pruned
+#----------------------------
 printcp(fit.tree)
 plotcp(fit.tree, minline = TRUE)
 
@@ -73,15 +186,16 @@ prunedTree.ytest <- astronomy[-idx.train, "class"]
 matrix.conf.prunedTree <- table(prunedTree.ytest, prunedTree.yhat)
 matrix.conf.prunedTree
 
-err.tree <- 1 - sum(diag(matrix.conf.prunedTree))/ntest
-err.tree
-
+err.prunedTree <- 1 - sum(diag(matrix.conf.prunedTree))/ntest
+err.prunedTree
+# 0.01019796
 ## plot of ROC curve of the pruned tree classifier
-library(pROC)
 prob <- predict(pruned_tree, newdata = astronomy[-idx.train,], type = 'prob')
 roc_tree_pruned <- multiclass.roc(prunedTree.ytest, prob)
-
-######################### Bagging ###########################################
+roc_tree_pruned
+#----------------------------
+# Bagging
+#----------------------------
 library(randomForest)
 param <-ncol(astronomy) - 1
 fit.bagged <- randomForest(class~., data=astronomy, subset=idx.train, mtry=param)
@@ -91,32 +205,24 @@ CM.bagged <- table(bagged.yhat, bagged.ytest)
 CM.bagged
 err.bagged <- 1-mean(bagged.yhat == bagged.ytest)
 err.bagged
-
-
-############################### Random forest ################################
+# 0.01079784
+#----------------------------
+# Random forest
+#----------------------------
 fit.rf <- randomForest(class~., data=astronomy, subset=idx.train)
 rf.ytest <- astronomy[-idx.train, "class"]
 rf.yhat <- predict(fit.rf, newdata=astronomy[-idx.train,], type="response") 
 CM.rf <- table(rf.ytest, rf.yhat)
 err.rf <- 1-mean(rf.ytest== rf.yhat)
 err.rf
-
-
-
-
-################################# SVM #################################
-
+# 0.01079784
+#----------------------------
+# SVM
+#----------------------------
 ## data normalisation
 class <- astronomy$class
 SVM.X <- subset(astronomy, select = -c(class))
 SVM.X <- scale(SVM.X)
-
-## PCA(vue que on a pas beacoup de varible on va voir si qu'on veut diminuer la dimension)
-pca<-prcomp(SVM.X)
-lambda<-pca$sdev^2
-pairs(pca$x, col=y, pch=as.numeric(y))
-plot(cumsum(lambda)/sum(lambda), xlab="q")
-
 
 SVM.X.train <- SVM.X[idx.train,]
 SVM.X.test <- SVM.X[-idx.train,]
@@ -124,7 +230,9 @@ SVM.X.test <- SVM.X[-idx.train,]
 SVM.Y.train <- class[idx.train]
 SVM.Y.test <- class[-idx.train]
 
-## SVM linéaire
+#----------------------------
+#  SVM linéaire
+#----------------------------
 library("kernlab")
 
 ### SVM avec noyau linéaire
@@ -145,15 +253,37 @@ plot(CC,Err,type="b",log="x",xlab="C",ylab="CV error")
 minCC <- CC[which.min(Err)]
 svmfit<-ksvm(x=SVM.X.train,y=SVM.Y.train,type="C-svc",kernel="vanilladot",C=minCC)
 SVM.pred<-predict(svmfit,newdata=SVM.X.test)
-table(SVM.Y.test,SVM.pred)
-err<-mean(SVM.Y.test != SVM.pred)
-print(err)
+matrix.conf.svm<-table(SVM.Y.test,SVM.pred)
+err.svm<-1-sum(diag(matrix.conf.svm))/ntest
+err.svm
+#0.01019796
+#----------------------------
+#  SVM non linéaire
+#----------------------------
 
-# Courbe COR
-roc.svm<-roc(SVM.pred, SVM.Y.test)
-plot(roc.svm)
+################# SVM avec noyau gaussien ####################
+# Calcul de l'erreur de test avec la meilleure valeur de C
+svmfit<-ksvm(x=SVM.X.train,y=SVM.Y.train,type="C-svc",kernel="rbfdot",C=minCC)
+SVM.pred.rbfdot<-predict(svmfit,newdata=SVM.X.test)
+matrix.conf.svm.rbfdot<-table(SVM.pred.rbfdot, SVM.Y.test)
+matrix.conf.svm.rbfdot
+err.svm.rbfdot<-1-sum(diag(matrix.conf.svm.rbfdot))/ntest
+err.svm.rbfdot
+#0.04259148
+############# SVM avec noyau polynomial ############
+svmfit<-ksvm(x=SVM.X.train,y=SVM.Y.train,type="C-svc",kernel="polydot",C=minCC)
+SVM.pred.polydot<-predict(svmfit,newdata=SVM.X.test)
+matrix.conf.svm.polydot<-table(SVM.pred.polydot, SVM.Y.test)
+err.svm.polydot<-1-sum(diag(matrix.conf.svm.polydot))/ntest
+err.svm.polydot
 
 
+########################### save Rdata #################################
+save.image("./classifier_astronomie.RData")
 
 
+load("classifier_astronomie.RData")
+
+pca.rotation <- pca$rotation
+save(fit.MLR.final, pca.rotation, file = "env.RData")
 
